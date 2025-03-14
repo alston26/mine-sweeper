@@ -1,5 +1,3 @@
-package MineSweepers;
-
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -19,18 +17,21 @@ public class minesweeperOOP extends JButton implements Runnable, ActionListener 
     static int revealeds = 0;
     static int rows = 0;
     static int cols = 0;
-    static int mins = 0;//number of mines
+    static int mins = 0; // number of mines
     static int firstX, firstY, changeX, changeY;
-    static Image bomb = new ImageIcon("src/Minesweepers/Images/Bomb.png").getImage().getScaledInstance(20,20, Image.SCALE_DEFAULT);
+    static Image bomb = new ImageIcon("Images/Bomb.png").getImage().getScaledInstance(20, 20, Image.SCALE_DEFAULT);
     Icon bombIcon = new ImageIcon(bomb);
     JFrame frame = new JFrame();
     public static final int x = 700;
 
-    public void run() {//Sets up the JFrame but also generates the grid and board
+    private static boolean firstClick = true; // Flag to track the first click
+    private static int firstClickRow = -1, firstClickCol = -1; // Position of the first click
+
+    public void run() { // Sets up the JFrame but also generates the grid and board
         frame.setSize(x, x);
         Scanner fin = null;
-        String filename = "src/Files/EasySmall";
-        try {//Reads the written file to find the rows, cols, and mines for the selected modes
+        String filename = "EasySmall";
+        try { // Reads the written file to find the rows, cols, and mines for the selected modes
             fin = new Scanner(new File(filename));
         } catch (Exception ex) {
             System.out.print(ex);
@@ -47,27 +48,36 @@ public class minesweeperOOP extends JButton implements Runnable, ActionListener 
                 System.out.println(ex);
             }
             frame.setLayout(new GridLayout(rows, cols));
-        }//while
+        } // while
         game = new minesweeperOOP[rows][cols];
-        game = genGrid(game, mins);
+        game = genGrid(game); // Generate grid without bombs initially
         for (int i = 0; i < game.length; i++) {
             for (int t = 0; t < game[0].length; t++) {
-                frame.add(game[i][t]);//Adds each component JButton to the JFrame
+                frame.add(game[i][t]); // Adds each component JButton to the JFrame
             }
         }
         frame.setVisible(true);
     }
 
-    public minesweeperOOP[][] genGrid(minesweeperOOP[][] cells, int mines) {//Generates each button/cell
-        int cols = cells[0].length;
+    public minesweeperOOP[][] genGrid(minesweeperOOP[][] cells) { // Generates each button/cell without bombs
         for (int i = 0; i < cells.length; i++) {
             for (int j = 0; j < cells[0].length; j++) {
                 cells[i][j] = new minesweeperOOP();
             }
         }
+        return cells;
+    }
 
+    private void placeMines(minesweeperOOP[][] cells, int mines, int safeRow, int safeCol) { // Places mines randomly, avoiding the safe cell and its neighbors
         List<Integer> list = new ArrayList<>();
-        for (int i = 1; i < cells.length * cells[0].length; i++) list.add(i);
+        for (int i = 0; i < cells.length * cells[0].length; i++) {
+            int row = i / cols;
+            int col = i % cols;
+            // Exclude the safe cell and its adjacent cells
+            if (Math.abs(row - safeRow) > 1 || Math.abs(col - safeCol) > 1) {
+                list.add(i);
+            }
+        }
         Collections.shuffle(list);
         list = list.subList(0, mines);
 
@@ -77,76 +87,63 @@ public class minesweeperOOP extends JButton implements Runnable, ActionListener 
             cells[row][col].setMine(true);
         }
 
+        // Calculate the number of mines around each cell
         for (int i = 0; i < cells.length; i++) {
             for (int j = 0; j < cells[0].length; j++) {
                 doMinesAround(cells, i, j);
             }
         }
-        return cells;
+
+        // Ensure the first clicked cell has zero adjacent mines
+        cells[safeRow][safeCol].setMinesAround(0);
     }
 
-    private void doMinesAround(minesweeperOOP[][] cells, int row, int col) {//This finds the number of mines around and sets the value of mines around of the button to that
+    private void doMinesAround(minesweeperOOP[][] cells, int row, int col) { // Calculates the number of mines around a cell
         int count = 0;
-        boolean top = false, bottom = false, left = false, right = false;
-        if (row == 0) top = true;
-        if (row == cells.length - 1) bottom = true;
-        if (col == 0) left = true;
-        if (col == cells[0].length - 1) right = true;
-        if (!(top)) {
-            if (!left && cells[row - 1][col - 1].isMine()) count++;
-            if (cells[row - 1][col].isMine()) count++;
-            if (!right && cells[row - 1][col + 1].isMine()) count++;
+        for (int i = Math.max(0, row - 1); i <= Math.min(row + 1, cells.length - 1); i++) {
+            for (int j = Math.max(0, col - 1); j <= Math.min(col + 1, cells[0].length - 1); j++) {
+                if (cells[i][j].isMine()) {
+                    count++;
+                }
+            }
         }
-        if (!bottom) {
-            if (!left && cells[row + 1][col - 1].isMine()) count++;
-            if (cells[row + 1][col].isMine()) count++;
-            if (!right && cells[row + 1][col + 1].isMine()) count++;
-        }
-        if (!left)
-            if (cells[row][col - 1].isMine()) count++;
-        if (!right)
-            if (cells[row][col + 1].isMine()) count++;
         cells[row][col].setMinesAround(count);
     }
 
-    public void reveal(minesweeperOOP[][] cells, int row, int col) {//Reveals the button
-        revealeds++;
+    public void reveal(minesweeperOOP[][] cells, int row, int col) { // Reveals the button
+        if (cells[row][col].isRevealed()) {
+            return; // If the cell is already revealed, do nothing
+        }
+
         cells[row][col].setRevealed(true);
         cells[row][col].setEnabled(false);
-        if (cells[row][col].isMine())
+        revealeds++;
+
+        if (cells[row][col].isMine()) {
             gameLost = true;
+            return;
+        }
+
         if (cells[row][col].getMinesAround() == 0) {
+            // Recursively reveal all adjacent cells if this cell has no adjacent mines
             revealAround(cells, row, col);
         } else {
-            if (cells[row][col].getMinesAround() != 0) {
-                cells[row][col].setText(String.valueOf(cells[row][col].getMinesAround()));
+            // If the cell has adjacent mines, display the number of mines
+            cells[row][col].setText(String.valueOf(cells[row][col].getMinesAround()));
+        }
+    }
+
+    public void revealAround(minesweeperOOP[][] cells, int row, int col) { // Reveals all adjacent cells
+        for (int i = Math.max(0, row - 1); i <= Math.min(row + 1, cells.length - 1); i++) {
+            for (int j = Math.max(0, col - 1); j <= Math.min(col + 1, cells[0].length - 1); j++) {
+                if (!cells[i][j].isRevealed()) {
+                    reveal(cells, i, j); // Recursively reveal the cell
+                }
             }
         }
     }
 
-    public void revealAround(minesweeperOOP[][] cells, int row, int col) {//Reveals each cell around those that have 0 mines
-        boolean top = false, bottom = false, left = false, right = false;
-        if (row == 0) top = true;
-        if (row == cells.length - 1) bottom = true;
-        if (col == 0) left = true;
-        if (col == cells[0].length - 1) right = true;
-        if (!(top)) {
-            if (!left && cells[row - 1][col - 1].isRevealed()) reveal(cells, row - 1, col - 1);
-            if (cells[row - 1][col].isRevealed()) reveal(cells, row - 1, col);
-            if (!right && cells[row - 1][col + 1].isRevealed()) reveal(cells, row - 1, col + 1);
-        }
-        if (!bottom) {
-            if (!left && cells[row + 1][col - 1].isRevealed()) reveal(cells, row + 1, col - 1);
-            if (cells[row + 1][col].isRevealed()) reveal(cells, row + 1, col);
-            if (!right && cells[row + 1][col + 1].isRevealed()) reveal(cells, row + 1, col + 1);
-        }
-        if (!left)
-            if (cells[row][col - 1].isRevealed()) reveal(cells, row, col - 1);
-        if (!right)
-            if (cells[row][col + 1].isRevealed()) reveal(cells, row, col + 1);
-    }
-
-    public minesweeperOOP() {//Constructor for each cell
+    public minesweeperOOP() { // Constructor for each cell
         mine = false;
         revealed = false;
         addActionListener(actionListener);
@@ -161,7 +158,7 @@ public class minesweeperOOP extends JButton implements Runnable, ActionListener 
     }
 
     public boolean isRevealed() {
-        return !revealed;
+        return revealed;
     }
 
     public int getMinesAround() {
@@ -194,14 +191,38 @@ public class minesweeperOOP extends JButton implements Runnable, ActionListener 
     public void actionPerformed(ActionEvent e) {
     }
 
+    private final ActionListener actionListener = actionEvent -> { // ActionListener for each Button
+        if (firstClick) {
+            // Get the position of the first click
+            firstClickRow = -1;
+            firstClickCol = -1;
+            outerLoop:
+            for (int i = 0; i < game.length; i++) {
+                for (int j = 0; j < game[0].length; j++) {
+                    if (game[i][j] == this) {
+                        firstClickRow = i;
+                        firstClickCol = j;
+                        break outerLoop;
+                    }
+                }
+            }
 
-    private final ActionListener actionListener = actionEvent -> {//ActionListener for each Button
-        firstY = game[0][0].getY();
-        changeY = game[1][1].getY()-firstY;
-        firstX = game[0][0].getX();
-        changeX = game[1][1].getX()-firstX;
+            // Place mines after the first click, ensuring the first cell and its neighbors are safe
+            placeMines(game, mins, firstClickRow, firstClickCol);
+            firstClick = false; // Mark that the first click has occurred
 
-        reveal(game, (getY() - firstY) / changeY, (getX() - firstX)/ changeX);
+            // Reveal the first clicked cell and its adjacent cells
+            reveal(game, firstClickRow, firstClickCol);
+        } else {
+            // Reveal the cell
+            firstY = game[0][0].getY();
+            changeY = game[1][1].getY() - firstY;
+            firstX = game[0][0].getX();
+            changeX = game[1][1].getX() - firstX;
+
+            reveal(game, (getY() - firstY) / changeY, (getX() - firstX) / changeX);
+        }
+
         System.out.println(revealeds + " " + ((rows * cols) - mins) + " " + mins);
         if (gameLost) {
             JOptionPane.showMessageDialog(frame, "Game Over");
@@ -213,8 +234,7 @@ public class minesweeperOOP extends JButton implements Runnable, ActionListener 
         }
         if (revealeds == (rows * cols) - mins)
             JOptionPane.showMessageDialog(frame, "You have won!", "Congratulations", JOptionPane.INFORMATION_MESSAGE);
-        if (revealeds == (rows * cols) - mins || gameLost)
-        {
+        if (revealeds == (rows * cols) - mins || gameLost) {
             gameLost = false;
             for (int i = 0; i < game.length; i++) {
                 for (int j = 0; j < game[0].length; j++) {
